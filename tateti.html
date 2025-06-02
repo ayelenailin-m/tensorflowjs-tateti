@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IA Tatetí</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.0.0/dist/tf.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            background-color: #fbe7f6;
+            padding-top: 40px;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            gap: 5px;
+            justify-content: center;
+            margin: 0 auto;
+        }
+
+        .cell {
+            width: 100px;
+            height: 100px;
+            font-size: 2.5rem;
+            font-weight: bold;
+            background-color: rgb(225, 255, 255);
+            border: 2px solid #000000;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .cell:disabled {
+            background-color: #e1aad2;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 20px;
+            font-size: 1.2rem;
+        }
+
+        #restart {
+            margin-top: 15px;
+            padding: 10px 20px;
+            font-size: 1rem;
+            display: none;
+            cursor: pointer;
+            background-color: #65125a;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        #restart:hover {
+            background-color: #87006a;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Tatetí con IA</h1>
+    <div id="board"></div>
+    <div id="status">Tu turno (jugador O)</div>
+    <button id="restart" onclick="resetGame()">Volver a jugar</button>
+
+    <script>
+        // Representación del tablero (0: vacío, 1: humano, -1: IA)
+        let boardState = Array(9).fill(0);
+        let cells = [];
+        let model;
+        let gameOver = false;
+
+        // Crea las celdas del tablero y las agrega al DOM
+        const board = document.getElementById('board');
+        for (let i = 0; i < 9; i++) {
+            const btn = document.createElement('button');
+            btn.classList.add('cell');
+            btn.dataset.index = i;
+            btn.addEventListener('click', playerMove);
+            board.appendChild(btn);
+            cells.push(btn);
+        }
+
+        const status = document.getElementById('status');
+        const restartBtn = document.getElementById('restart');
+
+        // Carga el modelo de IA entrenado
+        tf.ready().then(async () => {
+            model = await tf.loadLayersModel('model/ttt_model.json');
+        });
+
+        // Lógica del movimiento del jugador humano
+        function playerMove(e) {
+            if (gameOver) return;
+            const index = e.target.dataset.index;
+            if (boardState[index] !== 0) return;
+
+            boardState[index] = 1; // Jugador humano
+            updateBoard();
+
+            if (checkWinner(1)) {
+                status.textContent = "Ganaste!";
+                gameOver = true;
+                restartBtn.style.display = 'inline-block';
+                return;
+            }
+
+            if (!boardState.includes(0)) {
+                status.textContent = "Empate!";
+                gameOver = true;
+                restartBtn.style.display = 'inline-block';
+                return;
+            }
+
+            status.textContent = "Turno de la IA...";
+            setTimeout(aiMove, 300); // Pequeña pausa para realismo
+        }
+
+        // Lógica del movimiento de la IA
+        function aiMove() {
+            const inputTensor = tf.tensor([boardState]);
+            const prediction = model.predict(inputTensor).dataSync();
+
+            // Escoge la jugada con mayor probabilidad en una casilla libre
+            let bestScore = -Infinity;
+            let bestMove = -1;
+            for (let i = 0; i < 9; i++) {
+                if (boardState[i] === 0 && prediction[i] > bestScore) {
+                    bestScore = prediction[i];
+                    bestMove = i;
+                }
+            }
+
+            if (bestMove !== -1) {
+                boardState[bestMove] = -1; // Jugada de la IA
+                updateBoard();
+
+                if (checkWinner(-1)) {
+                    status.textContent = "La IA ganó!";
+                    gameOver = true;
+                    restartBtn.style.display = 'inline-block';
+                    return;
+                }
+
+                if (!boardState.includes(0)) {
+                    status.textContent = "Empate!";
+                    gameOver = true;
+                    restartBtn.style.display = 'inline-block';
+                    return;
+                }
+
+                status.textContent = "Tu turno (jugador O)";
+            }
+        }
+
+        // Actualiza la vista del tablero según el estado actual
+        function updateBoard() {
+            boardState.forEach((val, i) => {
+                if (val === 1) {
+                    cells[i].textContent = 'O';
+                    cells[i].disabled = true;
+                } else if (val === -1) {
+                    cells[i].textContent = 'X';
+                    cells[i].disabled = true;
+                } else {
+                    cells[i].textContent = '';
+                    cells[i].disabled = false;
+                }
+            });
+        }
+
+        // Verifica si el jugador (1 o -1) ganó
+        function checkWinner(player) {
+            const wins = [
+                [0, 1, 2], [3, 4, 5], [6, 7, 8], // Horizontales
+                [0, 3, 6], [1, 4, 7], [2, 5, 8], // Verticales
+                [0, 4, 8], [2, 4, 6]             // Diagonales
+            ];
+            return wins.some(combo =>
+                combo.every(index => boardState[index] === player)
+            );
+        }
+        // Reinicia el juego
+        function resetGame() {
+            boardState = Array(9).fill(0);
+            gameOver = false;
+            status.textContent = "Tu turno (jugador O)";
+            restartBtn.style.display = 'none';
+            updateBoard();
+        }
+    </script>
+</body>
+
+</html>
